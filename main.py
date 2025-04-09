@@ -19,13 +19,13 @@ def root():
 @app.get("/tiktok")
 def get_video(url: str = Query(...)):
     try:
-        # Run the yt-dlp command with more headers to mimic browser behavior
+        # Run yt-dlp with headers to mimic a real browser without cookies
         result = subprocess.run(
-            ['yt-dlp', '-j', '--no-check-certificate', '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36', '--referer', 'https://www.tiktok.com/', '--cookies', 'cookies.txt', url],
+            ['yt-dlp', '-j', '--no-check-certificate', '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36', '--referer', 'https://www.tiktok.com/', '--accept-language', 'en-US,en;q=0.9', url],
             capture_output=True,
             text=True,
             check=True,
-            encoding='utf-8'  # Set encoding to utf-8 to handle all characters
+            encoding='utf-8'  # Ensure UTF-8 to handle all characters
         )
         
         logging.info(f"yt-dlp output: {result.stdout}")
@@ -55,7 +55,7 @@ async def download_video(url: str = Query(...)):
         with tempfile.TemporaryDirectory() as temp_dir:
             # Run yt-dlp to download the video file into the temporary directory
             result = subprocess.run(
-                ['yt-dlp', '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36', '--referer', 'https://www.tiktok.com/', '--cookies', 'cookies.txt', '-o', os.path.join(temp_dir, '%(title)s.%(ext)s'), url],
+                ['yt-dlp', '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36', '--referer', 'https://www.tiktok.com/', '--accept-language', 'en-US,en;q=0.9', '-o', os.path.join(temp_dir, '%(title)s.%(ext)s'), url],
                 capture_output=True,
                 text=True,
                 check=True,
