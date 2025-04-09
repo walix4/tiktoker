@@ -5,6 +5,7 @@ import json
 import logging
 import tempfile
 import os
+import urllib.parse
 
 app = FastAPI()
 
@@ -20,7 +21,7 @@ def get_video(url: str = Query(...)):
     try:
         # Run the yt-dlp command to get video information in JSON format
         result = subprocess.run(
-            ['yt-dlp', '-j', url],
+            ['yt-dlp', '-j', '--no-check-certificate', '--user-agent', 'Mozilla/5.0', url],
             capture_output=True,
             text=True,
             check=True,
@@ -33,7 +34,7 @@ def get_video(url: str = Query(...)):
         video_json = json.loads(result.stdout)
         
         # Log the successful retrieval of video data
-        logging.info(f"Video retrieved: {video_json['url']}")
+        logging.info(f"Video URL retrieved: {video_json['url']}")
         
         return {"url": video_json["url"]}
     
@@ -79,7 +80,7 @@ async def download_video(url: str = Query(...)):
             
             # Open the file as a streaming response
             video_file = open(video_file_path, 'rb')
-            return StreamingResponse(video_file, media_type="video/mp4", headers={"Content-Disposition": f"attachment; filename={os.path.basename(video_file_path)}"})
+            return StreamingResponse(video_file, media_type="video/mp4", headers={"Content-Disposition": f"attachment; filename={urllib.parse.quote(os.path.basename(video_file_path))}"})
         
     except subprocess.CalledProcessError as e:
         logging.error(f"yt-dlp download failed with error: {e.stderr}")
