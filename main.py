@@ -18,17 +18,16 @@ def root():
 @app.get("/tiktok")
 def get_video(url: str = Query(...)):
     try:
-        # Log the incoming request
-        logging.info(f"Request received for URL: {url}")
-        
         # Run the yt-dlp command to get video information in JSON format
         result = subprocess.run(
             ['yt-dlp', '-j', url],
             capture_output=True,
             text=True,
-            check=True,  # Raise CalledProcessError on non-zero exit code
+            check=True,
             encoding='utf-8'  # Set encoding to utf-8 to handle all characters
         )
+        
+        logging.info(f"yt-dlp output: {result.stdout}")
         
         # Parse the JSON output from yt-dlp
         video_json = json.loads(result.stdout)
@@ -39,56 +38,52 @@ def get_video(url: str = Query(...)):
         return {"url": video_json["url"]}
     
     except subprocess.CalledProcessError as e:
-        # Handle yt-dlp errors
         logging.error(f"yt-dlp failed with error: {e.stderr}")
         return {"error": "Failed to fetch video data. Please check the URL."}
     except json.JSONDecodeError:
-        # Handle JSON parsing errors
         logging.error("Failed to parse JSON response from yt-dlp.")
         return {"error": "Failed to parse video data. The URL might be incorrect."}
     except Exception as e:
-        # Catch any other exceptions
         logging.error(f"Unexpected error: {str(e)}")
         return {"error": f"An unexpected error occurred: {str(e)}"}
 
 @app.post("/download")
 async def download_video(url: str = Query(...)):
     try:
-        # Log the incoming request
-        logging.info(f"Download request received for URL: {url}")
-        
         # Create a temporary directory to store the downloaded video
         with tempfile.TemporaryDirectory() as temp_dir:
             # Run yt-dlp to download the video file into the temporary directory
             result = subprocess.run(
-                ['yt-dlp', '-o', os.path.join(temp_dir, '%(title)s.%(ext)s'), url],
+                ['yt-dlp', '--user-agent', 'Mozilla/5.0', '--no-check-certificate', '-o', os.path.join(temp_dir, '%(title)s.%(ext)s'), url],
                 capture_output=True,
                 text=True,
                 check=True,
                 encoding='utf-8'  # Set encoding to utf-8 for yt-dlp output
             )
             
+            logging.info(f"yt-dlp download output: {result.stdout}")
+            
             # Find the downloaded file in the temporary directory
-            video_file = None
+            video_file_path = None
             for file_name in os.listdir(temp_dir):
                 video_path = os.path.join(temp_dir, file_name)
                 if os.path.isfile(video_path):
-                    video_file = video_path
+                    video_file_path = video_path
                     break
+
+            if not video_file_path:
+                logging.error("No video file found after download.")
+                return {"error": "Failed to download video. No video file found."}
             
-            if not video_file:
-                return {"error": "Video download failed. No file found."}
+            logging.info(f"Video downloaded successfully: {video_file_path}")
             
             # Open the file as a streaming response
-            with open(video_file, 'rb') as video:
-                return StreamingResponse(video, media_type="video/mp4", headers={"Content-Disposition": f"attachment; filename={os.path.basename(video_file)}"})
+            video_file = open(video_file_path, 'rb')
+            return StreamingResponse(video_file, media_type="video/mp4", headers={"Content-Disposition": f"attachment; filename={os.path.basename(video_file_path)}"})
         
     except subprocess.CalledProcessError as e:
-        # Handle yt-dlp errors
-        logging.error(f"yt-dlp failed with error: {e.stderr}")
+        logging.error(f"yt-dlp download failed with error: {e.stderr}")
         return {"error": "Failed to download video. Please check the URL."}
     except Exception as e:
-        # Catch any other exceptions
-        logging.error(f"Unexpected error: {str(e)}")
+        logging.error(f"Unexpected error during download: {str(e)}")
         return {"error": f"An unexpected error occurred: {str(e)}"}
-
