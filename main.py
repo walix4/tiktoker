@@ -28,8 +28,10 @@ def get_video(url: str = Query(...)):
             encoding='utf-8'  # Ensure UTF-8 to handle all characters
         )
         
+        # Log the full yt-dlp output for debugging
         logging.info(f"yt-dlp output: {result.stdout}")
-        
+        logging.error(f"yt-dlp error: {result.stderr}")
+
         # Parse the JSON output from yt-dlp
         video_json = json.loads(result.stdout)
         
@@ -62,8 +64,10 @@ async def download_video(url: str = Query(...)):
                 encoding='utf-8'  # Set encoding to utf-8 for yt-dlp output
             )
             
+            # Log the full yt-dlp output for debugging
             logging.info(f"yt-dlp download output: {result.stdout}")
-            
+            logging.error(f"yt-dlp download error: {result.stderr}")
+
             # Find the downloaded file in the temporary directory
             video_file_path = None
             for file_name in os.listdir(temp_dir):
