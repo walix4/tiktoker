@@ -18,6 +18,9 @@ def root():
 @app.get("/tiktok")
 def get_video(url: str = Query(...)):
     try:
+        # Log the incoming request
+        logging.info(f"Request received for URL: {url}")
+        
         # Run the yt-dlp command to get video information in JSON format
         result = subprocess.run(
             ['yt-dlp', '-j', url],
@@ -51,6 +54,9 @@ def get_video(url: str = Query(...)):
 @app.post("/download")
 async def download_video(url: str = Query(...)):
     try:
+        # Log the incoming request
+        logging.info(f"Download request received for URL: {url}")
+        
         # Create a temporary directory to store the downloaded video
         with tempfile.TemporaryDirectory() as temp_dir:
             # Run yt-dlp to download the video file into the temporary directory
@@ -63,14 +69,19 @@ async def download_video(url: str = Query(...)):
             )
             
             # Find the downloaded file in the temporary directory
+            video_file = None
             for file_name in os.listdir(temp_dir):
                 video_path = os.path.join(temp_dir, file_name)
                 if os.path.isfile(video_path):
+                    video_file = video_path
                     break
-
+            
+            if not video_file:
+                return {"error": "Video download failed. No file found."}
+            
             # Open the file as a streaming response
-            video_file = open(video_path, 'rb')
-            return StreamingResponse(video_file, media_type="video/mp4", headers={"Content-Disposition": f"attachment; filename={file_name}"})
+            with open(video_file, 'rb') as video:
+                return StreamingResponse(video, media_type="video/mp4", headers={"Content-Disposition": f"attachment; filename={os.path.basename(video_file)}"})
         
     except subprocess.CalledProcessError as e:
         # Handle yt-dlp errors
@@ -80,3 +91,4 @@ async def download_video(url: str = Query(...)):
         # Catch any other exceptions
         logging.error(f"Unexpected error: {str(e)}")
         return {"error": f"An unexpected error occurred: {str(e)}"}
+
