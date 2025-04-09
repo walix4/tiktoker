@@ -23,7 +23,8 @@ def get_video(url: str = Query(...)):
             ['yt-dlp', '-j', url],
             capture_output=True,
             text=True,
-            check=True  # Raise CalledProcessError on non-zero exit code
+            check=True,  # Raise CalledProcessError on non-zero exit code
+            encoding='utf-8'  # Set encoding to utf-8 to handle all characters
         )
         
         # Parse the JSON output from yt-dlp
@@ -57,7 +58,8 @@ async def download_video(url: str = Query(...)):
                 ['yt-dlp', '-o', os.path.join(temp_dir, '%(title)s.%(ext)s'), url],
                 capture_output=True,
                 text=True,
-                check=True
+                check=True,
+                encoding='utf-8'  # Set encoding to utf-8 for yt-dlp output
             )
             
             # Find the downloaded file in the temporary directory
