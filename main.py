@@ -19,9 +19,9 @@ def root():
 @app.get("/tiktok")
 def get_video(url: str = Query(...)):
     try:
-        # Run the yt-dlp command to get video information in JSON format
+        # Run the yt-dlp command with more headers to mimic browser behavior
         result = subprocess.run(
-            ['yt-dlp', '-j', '--no-check-certificate', '--user-agent', 'Mozilla/5.0', url],
+            ['yt-dlp', '-j', '--no-check-certificate', '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36', '--referer', 'https://www.tiktok.com/', '--cookies', 'cookies.txt', url],
             capture_output=True,
             text=True,
             check=True,
@@ -55,7 +55,7 @@ async def download_video(url: str = Query(...)):
         with tempfile.TemporaryDirectory() as temp_dir:
             # Run yt-dlp to download the video file into the temporary directory
             result = subprocess.run(
-                ['yt-dlp', '--user-agent', 'Mozilla/5.0', '--no-check-certificate', '-o', os.path.join(temp_dir, '%(title)s.%(ext)s'), url],
+                ['yt-dlp', '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36', '--referer', 'https://www.tiktok.com/', '--cookies', 'cookies.txt', '-o', os.path.join(temp_dir, '%(title)s.%(ext)s'), url],
                 capture_output=True,
                 text=True,
                 check=True,
