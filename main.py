@@ -1,94 +1,147 @@
-from fastapi import FastAPI, Query
-from fastapi.responses import StreamingResponse
-import subprocess
-import json
-import logging
-import tempfile
-import os
-import urllib.parse
+# coding: utf-8
+from __future__ import unicode_literals
 
-app = FastAPI()
+from .common import InfoExtractor
+from ..utils import (
+    compat_str,
+    ExtractorError,
+    float_or_none,
+    int_or_none,
+    str_or_none,
+    try_get,
+    url_or_none,
+)
 
-# Basic logging setup
-logging.basicConfig(level=logging.INFO)
 
-@app.get("/")
-def root():
-    return {"message": "TikTok Downloader is running!"}
+class TikTokBaseIE(InfoExtractor):
+    def _extract_video(self, data, video_id=None):
+        video = data['video']
+        description = str_or_none(try_get(data, lambda x: x['desc']))
+        width = int_or_none(try_get(data, lambda x: video['width']))
+        height = int_or_none(try_get(data, lambda x: video['height']))
 
-@app.get("/tiktok")
-def get_video(url: str = Query(...)):
-    try:
-        # Run yt-dlp with headers to mimic a real browser without cookies
-        result = subprocess.run(
-            ['yt-dlp', '-j', '--no-check-certificate', '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36', '--referer', 'https://www.tiktok.com/', '--accept-language', 'en-US,en;q=0.9', url],
-            capture_output=True,
-            text=True,
-            check=True,
-            encoding='utf-8'  # Ensure UTF-8 to handle all characters
-        )
-        
-        # Log the full yt-dlp output for debugging
-        logging.info(f"yt-dlp output: {result.stdout}")
-        logging.error(f"yt-dlp error: {result.stderr}")
+        format_urls = set()
+        formats = []
+        for format_id in ('download', 'play'):
+            format_url = url_or_none(video.get('%sAddr' % format_id))
+            if not format_url:
+                continue
+            if format_url in format_urls:
+                continue
+            format_urls.add(format_url)
+            formats.append({
+                'url': format_url,
+                'ext': 'mp4',
+                'height': height,
+                'width': width,
+                'http_headers': {
+                    'Referer': 'https://www.tiktok.com/',
+                }
+            })
+        self._sort_formats(formats)
 
-        # Parse the JSON output from yt-dlp
-        video_json = json.loads(result.stdout)
-        
-        # Log the successful retrieval of video data
-        logging.info(f"Video URL retrieved: {video_json['url']}")
-        
-        return {"url": video_json["url"]}
-    
-    except subprocess.CalledProcessError as e:
-        logging.error(f"yt-dlp failed with error: {e.stderr}")
-        return {"error": "Failed to fetch video data. Please check the URL."}
-    except json.JSONDecodeError:
-        logging.error("Failed to parse JSON response from yt-dlp.")
-        return {"error": "Failed to parse video data. The URL might be incorrect."}
-    except Exception as e:
-        logging.error(f"Unexpected error: {str(e)}")
-        return {"error": f"An unexpected error occurred: {str(e)}"}
+        thumbnail = url_or_none(video.get('cover'))
+        duration = float_or_none(video.get('duration'))
 
-@app.post("/download")
-async def download_video(url: str = Query(...)):
-    try:
-        # Create a temporary directory to store the downloaded video
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # Run yt-dlp to download the video file into the temporary directory
-            result = subprocess.run(
-                ['yt-dlp', '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36', '--referer', 'https://www.tiktok.com/', '--accept-language', 'en-US,en;q=0.9', '-o', os.path.join(temp_dir, '%(title)s.%(ext)s'), url],
-                capture_output=True,
-                text=True,
-                check=True,
-                encoding='utf-8'  # Set encoding to utf-8 for yt-dlp output
-            )
-            
-            # Log the full yt-dlp output for debugging
-            logging.info(f"yt-dlp download output: {result.stdout}")
-            logging.error(f"yt-dlp download error: {result.stderr}")
+        uploader = try_get(data, lambda x: x['author']['nickname'], compat_str)
+        uploader_id = try_get(data, lambda x: x['author']['id'], compat_str)
 
-            # Find the downloaded file in the temporary directory
-            video_file_path = None
-            for file_name in os.listdir(temp_dir):
-                video_path = os.path.join(temp_dir, file_name)
-                if os.path.isfile(video_path):
-                    video_file_path = video_path
-                    break
+        timestamp = int_or_none(data.get('createTime'))
 
-            if not video_file_path:
-                logging.error("No video file found after download.")
-                return {"error": "Failed to download video. No video file found."}
-            
-            logging.info(f"Video downloaded successfully: {video_file_path}")
-            
-            # Open the file as a streaming response
-            video_file = open(video_file_path, 'rb')
-            return StreamingResponse(video_file, media_type="video/mp4", headers={"Content-Disposition": f"attachment; filename={urllib.parse.quote(os.path.basename(video_file_path))}"})
-        
-    except subprocess.CalledProcessError as e:
-        logging.error(f"yt-dlp download failed with error: {e.stderr}")
-        return {"error": "Failed to download video. Please check the URL."}
-    except Exception as e:
-        logging.error(f"Unexpected error during download: {str(e)}")
-        return {"error": f"An unexpected error occurred: {str(e)}"}
+        def stats(key):
+            return int_or_none(try_get(
+                data, lambda x: x['stats']['%sCount' % key]))
+
+        view_count = stats('play')
+        like_count = stats('digg')
+        comment_count = stats('comment')
+        repost_count = stats('share')
+
+        aweme_id = data.get('id') or video_id
+
+        return {
+            'id': aweme_id,
+            'title': uploader or aweme_id,
+            'description': description,
+            'thumbnail': thumbnail,
+            'duration': duration,
+            'uploader': uploader,
+            'uploader_id': uploader_id,
+            'timestamp': timestamp,
+            'view_count': view_count,
+            'like_count': like_count,
+            'comment_count': comment_count,
+            'repost_count': repost_count,
+            'formats': formats,
+        }
+
+
+class TikTokIE(TikTokBaseIE):
+    _VALID_URL = r'https?://(?:www\.)?tiktok\.com/@[^/]+/video/(?P<id>\d+)'
+    _TESTS = [{
+        'url': 'https://www.tiktok.com/@zureeal/video/6606727368545406213',
+        'md5': '163ceff303bb52de60e6887fe399e6cd',
+        'info_dict': {
+            'id': '6606727368545406213',
+            'ext': 'mp4',
+            'title': 'Zureeal',
+            'description': '#bowsette#mario#cosplay#uk#lgbt#gaming#asian#bowsettecosplay',
+            'thumbnail': r're:^https?://.*',
+            'duration': 15,
+            'uploader': 'Zureeal',
+            'uploader_id': '188294915489964032',
+            'timestamp': 1538248586,
+            'upload_date': '20180929',
+            'view_count': int,
+            'like_count': int,
+            'comment_count': int,
+            'repost_count': int,
+        }
+    }]
+
+    def _real_initialize(self):
+        # Setup session (will set necessary cookies)
+        self._request_webpage(
+            'https://www.tiktok.com/', None, note='Setting up session')
+
+    def _real_extract(self, url):
+        video_id = self._match_id(url)
+        webpage = self._download_webpage(url, video_id)
+        page_props = self._parse_json(self._search_regex(
+            r'<script[^>]+\bid=["\']__NEXT_DATA__[^>]+>\s*({.+?})\s*</script',
+            webpage, 'data'), video_id)['props']['pageProps']
+        data = try_get(page_props, lambda x: x['itemInfo']['itemStruct'], dict)
+        if not data and page_props.get('statusCode') == 10216:
+            raise ExtractorError('This video is private', expected=True)
+        return self._extract_video(data, video_id)
+
+
+class TikTokUserIE(TikTokBaseIE):
+    _VALID_URL = r'https://(?:www\.)?tiktok\.com/@(?P<id>[^/?#&]+)'
+    _TESTS = [{
+        'url': 'https://www.tiktok.com/@zureeal',
+        'info_dict': {
+            'id': '188294915489964032',
+        },
+        'playlist_mincount': 24,
+    }]
+    _WORKING = False
+
+    @classmethod
+    def suitable(cls, url):
+        return False if TikTokIE.suitable(url) else super(TikTokUserIE, cls).suitable(url)
+
+    def _real_extract(self, url):
+        user_id = self._match_id(url)
+        data = self._download_json(
+            'https://m.tiktok.com/h5/share/usr/list/%s/' % user_id, user_id,
+            query={'_signature': '_'})
+        entries = []
+        for aweme in data['aweme_list']:
+            try:
+                entry = self._extract_video(aweme)
+            except ExtractorError:
+                continue
+            entry['extractor_key'] = TikTokIE.ie_key()
+            entries.append(entry)
+        return self.playlist_result(entries, user_id)
